@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VibeShomer
 
-## Getting Started
+Free AI-powered security & performance scanner for vibe-coded projects.
 
-First, run the development server:
+[vibeshomer.dev](https://vibeshomer.dev)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## What it does
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+VibeShomer scans your code for security vulnerabilities and performance issues using framework-specific analysis powered by Claude. It understands the patterns and pitfalls unique to each stack.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Supported stacks:** Next.js · Express · Django · FastAPI · Rails · Go · Generic JS/TS · Generic Python
 
-## Learn More
+Each issue report includes:
+- Severity level (critical / warning / info)
+- Plain-language explanation a junior developer can understand
+- The problematic code snippet
+- A suggested fix
+- Downloadable PDF report
 
-To learn more about Next.js, take a look at the following resources:
+## How to use
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Option 1: Paste code** — Copy your code into the textarea, select the framework, and hit analyze.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Option 2: GitHub URL** — Enter a public repo URL and VibeShomer will fetch the relevant files automatically.
 
-## Deploy on Vercel
+> For private repos, provide a personal access token with `repo:read` scope. The token is used in-memory only and never stored.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Why framework-specific prompts matter
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+A generic "check for security issues" prompt misses most real vulnerabilities. SQL injection looks completely different in Django (`raw()` with `%s` formatting) vs Express (string-concatenated Sequelize queries). Server Actions in Next.js don't exist in Rails. VibeShomer uses tailored checklists for each framework so it catches what actually matters.
+
+## Privacy
+
+- Code is never stored
+- GitHub tokens used only in-memory, never logged
+- No login required
+
+## Tech stack
+
+- Next.js 14 · TypeScript · Tailwind CSS
+- Claude API (claude-sonnet-4-20250514) with streaming
+- Python / reportlab for PDF generation
+- Deployed on Vercel
+
+## Contributing
+
+Issues for false positives or missing security patterns are welcome. Note that the prompt checklists are not open source (stored as environment variables) but the rest of the codebase is.
+
+## License
+
+MIT

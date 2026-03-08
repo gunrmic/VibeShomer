@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/pdf/generate.py": {
+      "runtime": "python3.12"
+    }
+  }
+}

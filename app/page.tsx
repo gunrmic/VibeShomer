@@ -1,101 +1,180 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+import Image from 'next/image';
+import { CodeInput } from '@/components/CodeInput';
+import { GithubInput } from '@/components/GithubInput';
+import { ReviewReport } from '@/components/ReviewReport';
+import { LoadingSkeleton } from '@/components/LoadingSkeleton';
+import type { ReviewResult } from '@/types';
+
+type Tab = 'paste' | 'github';
+
+function extractJson(text: string): string {
+  // Strip markdown code fences if present
+  const fenced = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (fenced) return fenced[1].trim();
+  // Try to extract raw JSON object
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) return match[0];
+  return text;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [tab, setTab] = useState<Tab>('paste');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<ReviewResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleReset = () => {
+    setResult(null);
+    setError(null);
+  };
+
+  const handlePasteSubmit = async (code: string, language: string) => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const res = await fetch('/api/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, language }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Error: ${res.status}`);
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let fullText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        fullText += decoder.decode(value, { stream: true });
+      }
+
+      const parsed = JSON.parse(extractJson(fullText)) as ReviewResult;
+      setResult(parsed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGithubSubmit = async (url: string, token?: string) => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const res = await fetch('/api/github', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, githubToken: token }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Error: ${res.status}`);
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let fullText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        fullText += decoder.decode(value, { stream: true });
+      }
+
+      const parsed = JSON.parse(extractJson(fullText)) as ReviewResult;
+      setResult(parsed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main className="page">
+      <div className="scanlines" />
+      <div className="grid-bg" />
+
+      <nav className="nav">
+        <div className="nav-left">
+          <Image src="/logo.png" alt="VibeShomer" width={32} height={32} className="nav-logo" />
+          <span className="brand-name">VIBESHOMER</span>
+          <span className="status-dot" />
+          <span className="status-label">ACTIVE</span>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+        <span className="tagline-hebrew">{'\u05E9\u05D5\u05DE\u05E8 \u05D4\u05D5\u05D5\u05D9\u05D9\u05D1 \u05E9\u05DC\u05DA'}</span>
+      </nav>
+
+      <div className="hero">
+        <Image src="/logo.png" alt="VibeShomer" width={120} height={120} className="hero-logo" priority />
+        <h1 className="hero-title">VIBESHOMER</h1>
+        <p className="hero-subtitle">
+          AI-powered security &amp; performance scanner
+        </p>
+      </div>
+
+      {!result && (
+        <div className="card">
+          <div className="tabs">
+            <button
+              className={`tab ${tab === 'paste' ? 'active' : ''}`}
+              onClick={() => setTab('paste')}
+            >
+              PASTE CODE
+            </button>
+            <button
+              className={`tab ${tab === 'github' ? 'active' : ''}`}
+              onClick={() => setTab('github')}
+            >
+              GITHUB URL
+            </button>
+          </div>
+
+          {tab === 'paste' ? (
+            <CodeInput onSubmit={handlePasteSubmit} loading={loading} />
+          ) : (
+            <GithubInput onSubmit={handleGithubSubmit} loading={loading} />
+          )}
+        </div>
+      )}
+
+      {loading && <LoadingSkeleton />}
+
+      {error && (
+        <div className="error-card">
+          <p>{error}</p>
+          <button onClick={handleReset} className="btn-secondary">
+            try again
+          </button>
+        </div>
+      )}
+
+      {result && <ReviewReport result={result} onReset={handleReset} />}
+
+      <footer className="footer">
+        <p>&quot;watching your code so you don&apos;t have to&quot;</p>
       </footer>
-    </div>
+
+      <div className="watermark">
+        <Image src="/logo.png" alt="" width={300} height={300} />
+      </div>
+    </main>
   );
 }
