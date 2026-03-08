@@ -13,9 +13,26 @@ import {
 
 const MAX_FILE_COUNT = 200;
 
+// Safe error messages — never expose internal details
+const SAFE_ERRORS: Record<string, string> = {
+  'Repository not found. Is it public?': 'Repository not found. Is it public?',
+  'GitHub API rate limited. Try adding a personal access token.': 'GitHub API rate limited. Try adding a personal access token.',
+};
+
+function safeErrorMessage(err: unknown): string {
+  if (err instanceof Error && SAFE_ERRORS[err.message]) {
+    return SAFE_ERRORS[err.message];
+  }
+  return 'Analysis failed. Please try again.';
+}
+
+function getClientIp(): string {
+  const h = headers();
+  return h.get('x-real-ip') ?? h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+}
+
 export async function POST(req: Request) {
-  const headersList = headers();
-  const ip = headersList.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
+  const ip = getClientIp();
   const { allowed, retryAfter } = checkRateLimit(ip);
 
   if (!allowed) {
@@ -32,6 +49,14 @@ export async function POST(req: Request) {
   }
 
   try {
+    const contentType = req.headers.get('content-type');
+    if (!contentType?.includes('application/json')) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid content type.' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     const body = await req.json();
     const { url, githubToken } = body;
 
@@ -51,7 +76,10 @@ export async function POST(req: Request) {
     }
 
     const { owner, repo } = parsed;
-    const token = githubToken || process.env.GITHUB_TOKEN;
+    // Only use user-provided token if it's a non-empty string
+    const token = (typeof githubToken === 'string' && githubToken.length > 0)
+      ? githubToken
+      : process.env.GITHUB_TOKEN;
 
     // Fetch file tree
     const allFiles = await fetchFileTree(owner, repo, token);
@@ -59,7 +87,7 @@ export async function POST(req: Request) {
     if (allFiles.length > MAX_FILE_COUNT) {
       return new Response(
         JSON.stringify({
-          error: `Repository has ${allFiles.length} files. Max ${MAX_FILE_COUNT} for free scan.`,
+          error: `Repository has too many files. Max ${MAX_FILE_COUNT} for free scan.`,
         }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
@@ -126,8 +154,8 @@ export async function POST(req: Request) {
             }
           }
           controller.close();
-        } catch (err) {
-          controller.error(err);
+        } catch {
+          controller.error(new Error('Stream interrupted'));
         }
       },
     });
@@ -139,10 +167,8 @@ export async function POST(req: Request) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Analysis failed.';
-    console.error('GitHub API error:', message);
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: safeErrorMessage(err) }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }

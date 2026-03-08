@@ -4,10 +4,19 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { buildPrompt } from '@/lib/promptBuilder';
 
 const MAX_CODE_SIZE = 50 * 1024; // 50KB
+const VALID_LANGUAGES = new Set([
+  'nextjs', 'express', 'django', 'fastapi', 'rails', 'go',
+  'generic-js', 'generic-python', 'unknown',
+]);
+
+function getClientIp(): string {
+  const h = headers();
+  // On Vercel, x-real-ip is set by the platform and cannot be spoofed
+  return h.get('x-real-ip') ?? h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+}
 
 export async function POST(req: Request) {
-  const headersList = headers();
-  const ip = headersList.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
+  const ip = getClientIp();
   const { allowed, retryAfter } = checkRateLimit(ip);
 
   if (!allowed) {
@@ -24,6 +33,14 @@ export async function POST(req: Request) {
   }
 
   try {
+    const contentType = req.headers.get('content-type');
+    if (!contentType?.includes('application/json')) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid content type.' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     const body = await req.json();
     const { code, language } = body;
 
@@ -41,7 +58,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const projectType = language ?? 'generic-js';
+    const projectType = (typeof language === 'string' && VALID_LANGUAGES.has(language))
+      ? language
+      : 'generic-js';
     const prompt = buildPrompt(projectType, code);
 
     const client = new Anthropic();
@@ -65,8 +84,8 @@ export async function POST(req: Request) {
             }
           }
           controller.close();
-        } catch (err) {
-          controller.error(err);
+        } catch {
+          controller.error(new Error('Stream interrupted'));
         }
       },
     });
@@ -77,8 +96,7 @@ export async function POST(req: Request) {
         'Transfer-Encoding': 'chunked',
       },
     });
-  } catch (err) {
-    console.error('Review API error:', err);
+  } catch {
     return new Response(
       JSON.stringify({ error: 'Analysis failed. Please try again.' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }

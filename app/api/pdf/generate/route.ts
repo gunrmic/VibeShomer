@@ -34,12 +34,24 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+const MAX_BODY_SIZE = 100 * 1024; // 100KB
+
 export async function POST(req: Request) {
   try {
+    const contentLength = req.headers.get('content-length');
+    if (contentLength && parseInt(contentLength) > MAX_BODY_SIZE) {
+      return new Response(JSON.stringify({ error: 'Request too large.' }), { status: 413 });
+    }
+
     const body = await req.json();
     const result = body.reviewResult;
-    if (!result) {
-      return new Response(JSON.stringify({ error: 'No reviewResult' }), { status: 400 });
+    if (!result || typeof result !== 'object') {
+      return new Response(JSON.stringify({ error: 'Invalid request.' }), { status: 400 });
+    }
+
+    // Validate issues array is bounded
+    if (Array.isArray(result.issues) && result.issues.length > 50) {
+      result.issues = result.issues.slice(0, 50);
     }
 
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });

@@ -9,17 +9,20 @@ interface FileContent {
   content: string;
 }
 
+const GITHUB_NAME_RE = /^[a-zA-Z0-9_.-]+$/;
+
 export function parseGithubUrl(url: string): { owner: string; repo: string } | null {
-  const patterns = [
-    /github\.com\/([^/]+)\/([^/\s#?]+)/,
-  ];
-  for (const pat of patterns) {
-    const match = url.match(pat);
-    if (match) {
-      return { owner: match[1], repo: match[2].replace(/\.git$/, '') };
-    }
-  }
-  return null;
+  const match = url.match(/github\.com\/([^/]+)\/([^/\s#?]+)/);
+  if (!match) return null;
+
+  const owner = match[1];
+  const repo = match[2].replace(/\.git$/, '');
+
+  // Validate owner/repo contain only safe characters
+  if (!GITHUB_NAME_RE.test(owner) || !GITHUB_NAME_RE.test(repo)) return null;
+  if (owner === '.' || owner === '..' || repo === '.' || repo === '..') return null;
+
+  return { owner, repo };
 }
 
 export async function fetchFileTree(
