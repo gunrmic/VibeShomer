@@ -16,8 +16,8 @@ const VALID_LANGUAGES = new Set([
 const MODEL_TRIAGE = 'claude-haiku-4-5-20251001';
 const MODEL_DEEP = 'claude-sonnet-4-20250514';
 
-function getClientIp(): string {
-  const h = headers();
+async function getClientIp(): Promise<string> {
+  const h = await headers();
   return h.get('x-real-ip') ?? h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
 }
 
@@ -42,7 +42,7 @@ export async function OPTIONS(req: Request) {
 
 export async function POST(req: Request) {
   const cors = corsHeaders(req);
-  const ip = getClientIp();
+  const ip = await getClientIp();
   const { allowed, retryAfter } = checkRateLimit(ip);
 
   if (!allowed) {
