@@ -20,6 +20,27 @@ function extractJson(text: string): string {
   return text;
 }
 
+const PROJECT_TYPE_MAP: Record<string, string> = {
+  next: 'nextjs', 'next.js': 'nextjs', nextjs: 'nextjs',
+  express: 'express', 'express.js': 'express',
+  django: 'django', fastapi: 'fastapi',
+  rails: 'rails', 'ruby on rails': 'rails',
+  go: 'go', golang: 'go',
+  'generic-js': 'generic-js', javascript: 'generic-js', typescript: 'generic-js',
+  'generic-python': 'generic-python', python: 'generic-python',
+};
+
+function normalizeProjectType(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  // Direct match
+  if (PROJECT_TYPE_MAP[lower]) return PROJECT_TYPE_MAP[lower];
+  // Partial match
+  for (const [key, value] of Object.entries(PROJECT_TYPE_MAP)) {
+    if (lower.includes(key)) return value;
+  }
+  return raw;
+}
+
 export default function Home() {
   const [tab, setTab] = useState<Tab>('paste');
   const [loading, setLoading] = useState(false);
@@ -61,6 +82,7 @@ export default function Home() {
       }
 
       const parsed = JSON.parse(extractJson(fullText)) as ReviewResult;
+      parsed.projectType = normalizeProjectType(parsed.projectType) as ReviewResult['projectType'];
       setResult(parsed);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -99,6 +121,7 @@ export default function Home() {
       }
 
       const parsed = JSON.parse(extractJson(fullText)) as ReviewResult;
+      parsed.projectType = normalizeProjectType(parsed.projectType) as ReviewResult['projectType'];
       setResult(parsed);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');

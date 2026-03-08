@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { buildPrompt } from '@/lib/promptBuilder';
+import { corsHeaders } from '@/lib/cors';
 
 const MAX_CODE_SIZE = 50 * 1024; // 50KB
 const VALID_LANGUAGES = new Set([
@@ -11,11 +12,15 @@ const VALID_LANGUAGES = new Set([
 
 function getClientIp(): string {
   const h = headers();
-  // On Vercel, x-real-ip is set by the platform and cannot be spoofed
   return h.get('x-real-ip') ?? h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
 }
 
+export async function OPTIONS(req: Request) {
+  return new Response(null, { status: 204, headers: corsHeaders(req) });
+}
+
 export async function POST(req: Request) {
+  const cors = corsHeaders(req);
   const ip = getClientIp();
   const { allowed, retryAfter } = checkRateLimit(ip);
 
@@ -24,10 +29,7 @@ export async function POST(req: Request) {
       JSON.stringify({ error: 'Too many requests. Slow down.' }),
       {
         status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-          'Retry-After': String(retryAfter),
-        },
+        headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) },
       }
     );
   }
@@ -37,7 +39,7 @@ export async function POST(req: Request) {
     if (!contentType?.includes('application/json')) {
       return new Response(
         JSON.stringify({ error: 'Invalid content type.' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -47,14 +49,14 @@ export async function POST(req: Request) {
     if (!code || typeof code !== 'string') {
       return new Response(
         JSON.stringify({ error: 'No code provided.' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
     if (code.length > MAX_CODE_SIZE) {
       return new Response(
         JSON.stringify({ error: 'Code too large. Max 50KB.' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -63,7 +65,9 @@ export async function POST(req: Request) {
       : 'generic-js';
     const prompt = buildPrompt(projectType, code);
 
-    const client = new Anthropic();
+    const client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
 
     const stream = await client.messages.stream({
       model: 'claude-sonnet-4-20250514',
@@ -92,6 +96,7 @@ export async function POST(req: Request) {
 
     return new Response(readable, {
       headers: {
+        ...cors,
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',
       },
@@ -99,7 +104,7 @@ export async function POST(req: Request) {
   } catch {
     return new Response(
       JSON.stringify({ error: 'Analysis failed. Please try again.' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
 }

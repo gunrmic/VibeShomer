@@ -19,6 +19,13 @@ const SEVERITY_COLOR: Record<string, string> = {
   info: COLORS.ok,
 };
 
+// ASCII-safe labels (jsPDF default fonts don't support Unicode symbols)
+const SEVERITY_MARKER: Record<string, string> = {
+  critical: '>>',
+  warning: '>>',
+  info: '>>',
+};
+
 function scoreColor(s: number): string {
   if (s >= 80) return COLORS.ok;
   if (s >= 60) return COLORS.warn;
@@ -58,7 +65,17 @@ export async function POST(req: Request) {
     const W = 210;
     const M = 18;
     const contentW = W - 2 * M;
+    const cardInnerW = contentW - 16; // text area inside issue cards
     let y = M;
+
+    const newPageIfNeeded = (needed: number) => {
+      if (y + needed > 280) {
+        doc.addPage();
+        doc.setFillColor(...hexToRgb(COLORS.bg));
+        doc.rect(0, 0, 210, 297, 'F');
+        y = M;
+      }
+    };
 
     // Background
     doc.setFillColor(...hexToRgb(COLORS.bg));
@@ -82,7 +99,7 @@ export async function POST(req: Request) {
     doc.setTextColor(...hexToRgb(COLORS.muted));
     doc.setFontSize(8);
     doc.setFont('courier', 'normal');
-    doc.text(`// ${ptype}  ·  ${now}`, M, y);
+    doc.text(`// ${ptype} - ${now}`, M, y);
     y += 4;
 
     // Accent line
@@ -144,7 +161,7 @@ export async function POST(req: Request) {
     doc.setDrawColor(...hexToRgb(COLORS.accent));
     doc.setLineWidth(0.3);
     const summaryText = result.summary ?? '';
-    const summaryLines = doc.splitTextToSize(summaryText, contentW - 12);
+    const summaryLines: string[] = doc.splitTextToSize(summaryText, contentW - 12);
     const summaryH = summaryLines.length * 4.5 + 8;
     doc.roundedRect(M, y, contentW, summaryH, 1, 1, 'FD');
     doc.setTextColor(...hexToRgb(COLORS.text));
@@ -159,13 +176,7 @@ export async function POST(req: Request) {
       const group = issues.filter((i: { severity: string }) => i.severity === severity);
       if (group.length === 0) continue;
 
-      // Check page space
-      if (y > 260) {
-        doc.addPage();
-        doc.setFillColor(...hexToRgb(COLORS.bg));
-        doc.rect(0, 0, 210, 297, 'F');
-        y = M;
-      }
+      newPageIfNeeded(15);
 
       const scolor = SEVERITY_COLOR[severity];
       doc.setDrawColor(...hexToRgb(scolor));
@@ -176,24 +187,49 @@ export async function POST(req: Request) {
       doc.setTextColor(...hexToRgb(scolor));
       doc.setFontSize(8);
       doc.setFont('courier', 'bold');
-      doc.text(`▲ ${severity.toUpperCase()} (${group.length})`, M, y);
+      doc.text(`${SEVERITY_MARKER[severity]} ${severity.toUpperCase()} (${group.length})`, M, y);
       y += 6;
 
       for (const issue of group) {
-        // Estimate card height
-        const titleLines = doc.splitTextToSize(issue.title ?? '', contentW - 16);
-        const explLines = doc.splitTextToSize(issue.explanation ?? '', contentW - 16);
-        let cardH = 8 + titleLines.length * 5 + 4 + explLines.length * 4 + 4;
-        if (issue.badCode) cardH += 12;
-        if (issue.fix) cardH += 12;
-        if (issue.location) cardH += 5;
+        // Pre-calculate all wrapped text
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        const titleLines: string[] = doc.splitTextToSize(issue.title ?? '', cardInnerW);
 
-        if (y + cardH > 280) {
-          doc.addPage();
-          doc.setFillColor(...hexToRgb(COLORS.bg));
-          doc.rect(0, 0, 210, 297, 'F');
-          y = M;
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        const explLines: string[] = doc.splitTextToSize(issue.explanation ?? '', cardInnerW);
+
+        doc.setFontSize(7);
+        doc.setFont('courier', 'normal');
+        const badLines: string[] = issue.badCode
+          ? doc.splitTextToSize(issue.badCode, cardInnerW - 6)
+          : [];
+        const fixLines: string[] = issue.fix
+          ? doc.splitTextToSize(issue.fix, cardInnerW - 6)
+          : [];
+        const locLines: string[] = issue.location
+          ? doc.splitTextToSize(`> ${issue.location}`, cardInnerW)
+          : [];
+
+        // Calculate card height dynamically
+        let cardH = 6; // top padding
+        cardH += titleLines.length * 4.5; // title
+        cardH += 5; // category line
+        cardH += explLines.length * 3.8; // explanation
+        cardH += 3; // gap after explanation
+        if (badLines.length > 0) {
+          cardH += badLines.length * 3.5 + 6; // code block with padding
         }
+        if (fixLines.length > 0) {
+          cardH += fixLines.length * 3.5 + 6; // fix block with padding
+        }
+        if (locLines.length > 0) {
+          cardH += locLines.length * 3.5 + 2; // location
+        }
+        cardH += 4; // bottom padding
+
+        newPageIfNeeded(cardH + 4);
 
         // Card background
         doc.setFillColor(...hexToRgb(COLORS.surface));
@@ -212,7 +248,7 @@ export async function POST(req: Request) {
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
         doc.text(titleLines, M + 8, cy);
-        cy += titleLines.length * 5 + 2;
+        cy += titleLines.length * 4.5 + 2;
 
         // Category
         doc.setTextColor(...hexToRgb(COLORS.muted));
@@ -226,38 +262,38 @@ export async function POST(req: Request) {
         doc.setFontSize(8);
         doc.setFont('helvetica', 'normal');
         doc.text(explLines, M + 8, cy);
-        cy += explLines.length * 4 + 3;
+        cy += explLines.length * 3.8 + 3;
 
         // Bad code
-        if (issue.badCode) {
+        if (badLines.length > 0) {
+          const codeBlockH = badLines.length * 3.5 + 4;
           doc.setFillColor(...hexToRgb(COLORS.codeBg));
-          doc.roundedRect(M + 6, cy - 2, contentW - 14, 10, 0.5, 0.5, 'F');
+          doc.roundedRect(M + 6, cy - 2, contentW - 14, codeBlockH, 0.5, 0.5, 'F');
           doc.setTextColor(...hexToRgb(COLORS.danger));
           doc.setFontSize(7);
           doc.setFont('courier', 'normal');
-          const badLines = doc.splitTextToSize(issue.badCode, contentW - 20);
-          doc.text(badLines.slice(0, 2), M + 8, cy + 2);
-          cy += 12;
+          doc.text(badLines, M + 8, cy + 2);
+          cy += codeBlockH + 2;
         }
 
         // Fix
-        if (issue.fix) {
+        if (fixLines.length > 0) {
+          const fixBlockH = fixLines.length * 3.5 + 4;
           doc.setFillColor(...hexToRgb(COLORS.codeBg));
-          doc.roundedRect(M + 6, cy - 2, contentW - 14, 10, 0.5, 0.5, 'F');
+          doc.roundedRect(M + 6, cy - 2, contentW - 14, fixBlockH, 0.5, 0.5, 'F');
           doc.setTextColor(...hexToRgb(COLORS.ok));
           doc.setFontSize(7);
           doc.setFont('courier', 'normal');
-          const fixLines = doc.splitTextToSize(issue.fix, contentW - 20);
-          doc.text(fixLines.slice(0, 2), M + 8, cy + 2);
-          cy += 12;
+          doc.text(fixLines, M + 8, cy + 2);
+          cy += fixBlockH + 2;
         }
 
         // Location
-        if (issue.location) {
+        if (locLines.length > 0) {
           doc.setTextColor(...hexToRgb(COLORS.accent2));
           doc.setFontSize(7);
           doc.setFont('courier', 'normal');
-          doc.text(`↳ ${issue.location}`, M + 8, cy);
+          doc.text(locLines, M + 8, cy);
         }
 
         y += cardH + 4;
@@ -265,12 +301,7 @@ export async function POST(req: Request) {
     }
 
     // Footer
-    if (y > 270) {
-      doc.addPage();
-      doc.setFillColor(...hexToRgb(COLORS.bg));
-      doc.rect(0, 0, 210, 297, 'F');
-      y = M;
-    }
+    newPageIfNeeded(15);
     y += 8;
     doc.setDrawColor(...hexToRgb('#1c2640'));
     doc.setLineWidth(0.3);
@@ -279,11 +310,13 @@ export async function POST(req: Request) {
     doc.setTextColor(...hexToRgb(COLORS.muted));
     doc.setFontSize(7);
     doc.setFont('courier', 'normal');
-    doc.text('VibeShomer  ·  watching your code so you don\'t have to  ·  vibeshomer.dev', W / 2, y, { align: 'center' });
+    doc.text('VibeShomer - watching your code so you don\'t have to - vibeshomer.dev', W / 2, y, { align: 'center' });
 
     const pdfBytes = doc.output('arraybuffer');
     const ts = Math.floor(Date.now() / 1000);
-    const filename = `vibeshomer-report-${result.projectType ?? 'report'}-${ts}.pdf`;
+    // Sanitize projectType for filename — only allow safe chars
+    const safePtype = (result.projectType ?? 'report').replace(/[^a-zA-Z0-9_-]/g, '-');
+    const filename = `vibeshomer-report-${safePtype}-${ts}.pdf`;
 
     return new Response(Buffer.from(pdfBytes), {
       headers: {
@@ -291,8 +324,7 @@ export async function POST(req: Request) {
         'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
-  } catch (err) {
-    console.error('PDF generation error:', err);
+  } catch {
     return new Response(
       JSON.stringify({ error: 'PDF generation failed' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }

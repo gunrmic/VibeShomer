@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import type { Issue } from '@/types';
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -6,8 +9,33 @@ const SEVERITY_COLORS: Record<string, string> = {
   info: 'var(--ok)',
 };
 
+function buildFixPrompt(issue: Issue): string {
+  const parts = [
+    `Fix this ${issue.severity} ${issue.category} issue in my code:`,
+    ``,
+    `**Issue:** ${issue.title}`,
+    `**Problem:** ${issue.explanation}`,
+  ];
+  if (issue.location) parts.push(`**Location:** ${issue.location}`);
+  if (issue.badCode) parts.push(``, `**Current code:**`, '```', issue.badCode, '```');
+  if (issue.fix) parts.push(``, `**Suggested fix:** ${issue.fix}`);
+  parts.push(
+    ``,
+    `Please provide the corrected code with an explanation of what was changed and why.`
+  );
+  return parts.join('\n');
+}
+
 export function IssueCard({ issue }: { issue: Issue }) {
+  const [copied, setCopied] = useState(false);
   const color = SEVERITY_COLORS[issue.severity] ?? 'var(--muted)';
+
+  const handleCopyPrompt = async () => {
+    const prompt = buildFixPrompt(issue);
+    await navigator.clipboard.writeText(prompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div
@@ -22,6 +50,9 @@ export function IssueCard({ issue }: { issue: Issue }) {
           {issue.severity.toUpperCase()}
         </span>
         <span className="category-label">{'// '}{issue.category}</span>
+        <button onClick={handleCopyPrompt} className="btn-copy-prompt">
+          {copied ? 'copied!' : 'copy fix prompt'}
+        </button>
       </div>
       <h4 className="issue-title">{issue.title}</h4>
       <p className="issue-explanation">{issue.explanation}</p>

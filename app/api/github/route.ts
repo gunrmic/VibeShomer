@@ -4,6 +4,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { buildPrompt } from '@/lib/promptBuilder';
 import { detectProjectType } from '@/lib/projectDetector';
 import { selectFiles, trimToTokenCap } from '@/lib/fileSelector';
+import { corsHeaders } from '@/lib/cors';
 import {
   parseGithubUrl,
   fetchFileTree,
@@ -13,7 +14,13 @@ import {
 
 const MAX_FILE_COUNT = 200;
 
-// Safe error messages — never expose internal details
+// GitHub tokens: classic (ghp_), fine-grained (github_pat_), or OAuth (gho_)
+const GITHUB_TOKEN_RE = /^(ghp_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{22,}|gho_[a-zA-Z0-9]{36,})$/;
+
+function isValidGithubToken(token: unknown): token is string {
+  return typeof token === 'string' && GITHUB_TOKEN_RE.test(token);
+}
+
 const SAFE_ERRORS: Record<string, string> = {
   'Repository not found. Is it public?': 'Repository not found. Is it public?',
   'GitHub API rate limited. Try adding a personal access token.': 'GitHub API rate limited. Try adding a personal access token.',
@@ -31,7 +38,12 @@ function getClientIp(): string {
   return h.get('x-real-ip') ?? h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
 }
 
+export async function OPTIONS(req: Request) {
+  return new Response(null, { status: 204, headers: corsHeaders(req) });
+}
+
 export async function POST(req: Request) {
+  const cors = corsHeaders(req);
   const ip = getClientIp();
   const { allowed, retryAfter } = checkRateLimit(ip);
 
@@ -40,10 +52,7 @@ export async function POST(req: Request) {
       JSON.stringify({ error: 'Too many requests. Slow down.' }),
       {
         status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-          'Retry-After': String(retryAfter),
-        },
+        headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) },
       }
     );
   }
@@ -53,7 +62,7 @@ export async function POST(req: Request) {
     if (!contentType?.includes('application/json')) {
       return new Response(
         JSON.stringify({ error: 'Invalid content type.' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -63,7 +72,7 @@ export async function POST(req: Request) {
     if (!url || typeof url !== 'string') {
       return new Response(
         JSON.stringify({ error: 'No URL provided.' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -71,13 +80,13 @@ export async function POST(req: Request) {
     if (!parsed) {
       return new Response(
         JSON.stringify({ error: 'Invalid GitHub URL.' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
     const { owner, repo } = parsed;
-    // Only use user-provided token if it's a non-empty string
-    const token = (typeof githubToken === 'string' && githubToken.length > 0)
+    // Validate token format before using
+    const token = isValidGithubToken(githubToken)
       ? githubToken
       : process.env.GITHUB_TOKEN;
 
@@ -89,7 +98,7 @@ export async function POST(req: Request) {
         JSON.stringify({
           error: `Repository has too many files. Max ${MAX_FILE_COUNT} for free scan.`,
         }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -122,7 +131,7 @@ export async function POST(req: Request) {
     if (trimmed.length === 0) {
       return new Response(
         JSON.stringify({ error: 'No analyzable files found in repository.' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -133,7 +142,9 @@ export async function POST(req: Request) {
 
     const prompt = buildPrompt(projectType, codeString);
 
-    const client = new Anthropic();
+    const client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
 
     const stream = await client.messages.stream({
       model: 'claude-sonnet-4-20250514',
@@ -162,6 +173,7 @@ export async function POST(req: Request) {
 
     return new Response(readable, {
       headers: {
+        ...cors,
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',
       },
@@ -169,7 +181,7 @@ export async function POST(req: Request) {
   } catch (err) {
     return new Response(
       JSON.stringify({ error: safeErrorMessage(err) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
 }
