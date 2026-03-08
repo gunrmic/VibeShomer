@@ -17,7 +17,7 @@ import {
 const MAX_FILE_COUNT = 200;
 
 // Haiku for triage, Sonnet for deep analysis
-const MODEL_TRIAGE = 'claude-haiku-4-5-20250514';
+const MODEL_TRIAGE = 'claude-haiku-4-5-20251001';
 const MODEL_DEEP = 'claude-sonnet-4-20250514';
 
 // GitHub tokens: classic (ghp_), fine-grained (github_pat_), or OAuth (gho_)

@@ -13,7 +13,7 @@ const VALID_LANGUAGES = new Set([
 ]);
 
 // Haiku for triage, Sonnet for deep analysis
-const MODEL_TRIAGE = 'claude-haiku-4-5-20250514';
+const MODEL_TRIAGE = 'claude-haiku-4-5-20251001';
 const MODEL_DEEP = 'claude-sonnet-4-20250514';
 
 function getClientIp(): string {
