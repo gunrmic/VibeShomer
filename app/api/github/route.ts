@@ -6,6 +6,7 @@ import { detectProjectType } from '@/lib/projectDetector';
 import { selectFiles, trimToTokenCap } from '@/lib/fileSelector';
 import { corsHeaders } from '@/lib/cors';
 import { ENV } from '@/lib/env';
+import { hashKey, getCached, setCache } from '@/lib/cache';
 import {
   parseGithubUrl,
   fetchFileTree,
@@ -14,6 +15,10 @@ import {
 } from '@/lib/githubClient';
 
 const MAX_FILE_COUNT = 200;
+
+// Haiku for triage, Sonnet for deep analysis
+const MODEL_TRIAGE = 'claude-haiku-4-5-20250514';
+const MODEL_DEEP = 'claude-sonnet-4-20250514';
 
 // GitHub tokens: classic (ghp_), fine-grained (github_pat_), or OAuth (gho_)
 const GITHUB_TOKEN_RE = /^(ghp_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{22,}|gho_[a-zA-Z0-9]{36,})$/;
@@ -30,19 +35,31 @@ async function verifyGithubToken(token: string): Promise<boolean> {
         'User-Agent': 'VibeShomer',
       },
     });
-    // Cancel body stream to prevent connection leaks without loading into memory
     await res.body?.cancel();
     return res.ok;
   } catch {
-    // Never log the token or error details that might contain it
     return false;
   }
 }
 
-
 function getClientIp(): string {
   const h = headers();
   return h.get('x-real-ip') ?? h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+}
+
+function hasCriticalIssues(text: string): boolean {
+  try {
+    const jsonStr = text.match(/\{[\s\S]*\}/)?.[0];
+    if (!jsonStr) return false;
+    const data = JSON.parse(jsonStr);
+    const issues = data.issues ?? [];
+    return issues.some(
+      (i: { severity?: string }) =>
+        i.severity === 'critical' || i.severity === 'high'
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function OPTIONS(req: Request) {
@@ -158,18 +175,57 @@ export async function POST(req: Request) {
       .map((f) => `// === ${f.path} ===\n${f.content}`)
       .join('\n\n');
 
-    const prompt = buildPrompt(projectType, codeString);
+    // Check cache — key by repo + code content hash
+    const cacheKey = hashKey(`github:${owner}/${repo}:${projectType}:${codeString}`);
+    const cached = getCached(cacheKey);
+    if (cached) {
+      return new Response(cached, {
+        headers: {
+          ...cors,
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Cache': 'HIT',
+        },
+      });
+    }
 
+    const prompt = buildPrompt(projectType, codeString);
     const apiKey = ENV.ANTHROPIC_API_KEY;
     const client = new Anthropic({ apiKey });
 
+    // Phase 1: Haiku triage (fast + cheap)
+    const triageResult = await client.messages.create({
+      model: MODEL_TRIAGE,
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const triageText = triageResult.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('');
+
+    // If no critical/high issues, return Haiku result directly
+    if (!hasCriticalIssues(triageText)) {
+      setCache(cacheKey, triageText);
+      return new Response(triageText, {
+        headers: {
+          ...cors,
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Cache': 'MISS',
+          'X-Model': 'triage',
+        },
+      });
+    }
+
+    // Phase 2: Critical issues found — deep scan with Sonnet (streamed)
     const stream = await client.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL_DEEP,
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
     });
 
     const encoder = new TextEncoder();
+    let fullText = '';
     const readable = new ReadableStream({
       async start(controller) {
         try {
@@ -178,9 +234,11 @@ export async function POST(req: Request) {
               event.type === 'content_block_delta' &&
               event.delta.type === 'text_delta'
             ) {
+              fullText += event.delta.text;
               controller.enqueue(encoder.encode(event.delta.text));
             }
           }
+          setCache(cacheKey, fullText);
           controller.close();
         } catch {
           console.error('[github] Stream error occurred');
@@ -195,6 +253,8 @@ export async function POST(req: Request) {
         ...cors,
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',
+        'X-Cache': 'MISS',
+        'X-Model': 'deep',
       },
     });
   } catch {
