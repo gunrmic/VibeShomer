@@ -6,6 +6,27 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  # Dummy prompt values for CI — tests verify these are set, not their content
+  PROMPT_SYSTEM: ci-test
+  PROMPT_OUTPUT_FORMAT: ci-test
+  PROMPT_SECURITY_NEXTJS: ci-test
+  PROMPT_PERFORMANCE_NEXTJS: ci-test
+  PROMPT_SECURITY_EXPRESS: ci-test
+  PROMPT_PERFORMANCE_EXPRESS: ci-test
+  PROMPT_SECURITY_DJANGO: ci-test
+  PROMPT_PERFORMANCE_DJANGO: ci-test
+  PROMPT_SECURITY_FASTAPI: ci-test
+  PROMPT_PERFORMANCE_FASTAPI: ci-test
+  PROMPT_SECURITY_RAILS: ci-test
+  PROMPT_PERFORMANCE_RAILS: ci-test
+  PROMPT_SECURITY_GO: ci-test
+  PROMPT_PERFORMANCE_GO: ci-test
+  PROMPT_SECURITY_GENERIC_JS: ci-test
+  PROMPT_PERFORMANCE_GENERIC_JS: ci-test
+  PROMPT_SECURITY_GENERIC_PYTHON: ci-test
+  PROMPT_PERFORMANCE_GENERIC_PYTHON: ci-test
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
@@ -26,8 +47,6 @@ jobs:
         run: yarn build
         env:
           ANTHROPIC_API_KEY: dummy-key-for-build
-          PROMPT_SYSTEM: test
-          PROMPT_OUTPUT_FORMAT: test
 
       - name: Unit & integration tests
         run: yarn test
@@ -52,8 +71,6 @@ jobs:
         run: yarn test:e2e
         env:
           ANTHROPIC_API_KEY: dummy-key-for-e2e
-          PROMPT_SYSTEM: test
-          PROMPT_OUTPUT_FORMAT: test
 
       - name: Upload test artifacts
         if: failure()
