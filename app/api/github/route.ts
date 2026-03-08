@@ -257,11 +257,10 @@ export async function POST(req: Request) {
         'X-Model': 'deep',
       },
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[github] Request error occurred:', message);
+  } catch {
+    console.error('[github] Request error occurred');
     return new Response(
-      JSON.stringify({ error: `Analysis failed: ${message}` }),
+      JSON.stringify({ error: 'Analysis failed. Please try again.' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
