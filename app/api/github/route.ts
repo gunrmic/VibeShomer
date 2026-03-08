@@ -5,6 +5,7 @@ import { buildPrompt } from '@/lib/promptBuilder';
 import { detectProjectType } from '@/lib/projectDetector';
 import { selectFiles, trimToTokenCap } from '@/lib/fileSelector';
 import { corsHeaders } from '@/lib/cors';
+import { ENV } from '@/lib/env';
 import {
   parseGithubUrl,
   fetchFileTree,
@@ -19,6 +20,20 @@ const GITHUB_TOKEN_RE = /^(ghp_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{22,}|gho
 
 function isValidGithubToken(token: unknown): token is string {
   return typeof token === 'string' && GITHUB_TOKEN_RE.test(token);
+}
+
+async function verifyGithubToken(token: string): Promise<boolean> {
+  try {
+    const res = await fetch('https://api.github.com/user', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'User-Agent': 'VibeShomer',
+      },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 const SAFE_ERRORS: Record<string, string> = {
@@ -85,10 +100,20 @@ export async function POST(req: Request) {
     }
 
     const { owner, repo } = parsed;
-    // Validate token format before using
-    const token = isValidGithubToken(githubToken)
-      ? githubToken
-      : process.env.GITHUB_TOKEN;
+
+    // Validate and verify user-provided token before using it
+    let token = ENV.GITHUB_TOKEN;
+    if (isValidGithubToken(githubToken)) {
+      const valid = await verifyGithubToken(githubToken);
+      if (valid) {
+        token = githubToken;
+      } else {
+        return new Response(
+          JSON.stringify({ error: 'Invalid GitHub token. Check your token and try again.' }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     // Fetch file tree
     const allFiles = await fetchFileTree(owner, repo, token);
@@ -102,17 +127,18 @@ export async function POST(req: Request) {
       );
     }
 
-    // Detect project type from root files
-    const detectorFiles: { path: string; content?: string }[] = [];
+    // Detect project type — fetch root detection files in parallel
     const rootDetectionFiles = ['package.json', 'requirements.txt', 'pyproject.toml', 'go.mod', 'Gemfile'];
-    for (const f of rootDetectionFiles) {
-      if (allFiles.includes(f)) {
-        const content = await fetchFileContent(owner, repo, f, token);
-        detectorFiles.push({ path: f, content });
-      }
-    }
+    const detectorResults = await Promise.all(
+      rootDetectionFiles
+        .filter((f) => allFiles.includes(f))
+        .map(async (f) => ({
+          path: f,
+          content: await fetchFileContent(owner, repo, f, token),
+        }))
+    );
 
-    const projectType = detectProjectType(detectorFiles);
+    const projectType = detectProjectType(detectorResults);
 
     // Select relevant files
     const selectedPaths = selectFiles(allFiles, projectType);
@@ -142,9 +168,8 @@ export async function POST(req: Request) {
 
     const prompt = buildPrompt(projectType, codeString);
 
-    const client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    const apiKey = ENV.ANTHROPIC_API_KEY;
+    const client = new Anthropic({ apiKey });
 
     const stream = await client.messages.stream({
       model: 'claude-sonnet-4-20250514',
@@ -165,7 +190,8 @@ export async function POST(req: Request) {
             }
           }
           controller.close();
-        } catch {
+        } catch (err) {
+          console.error('[github] Stream error:', err instanceof Error ? err.message : 'unknown');
           controller.error(new Error('Stream interrupted'));
         }
       },
@@ -179,6 +205,7 @@ export async function POST(req: Request) {
       },
     });
   } catch (err) {
+    console.error('[github] Request error:', err instanceof Error ? err.message : 'unknown');
     return new Response(
       JSON.stringify({ error: safeErrorMessage(err) }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }

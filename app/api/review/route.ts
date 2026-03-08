@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { buildPrompt } from '@/lib/promptBuilder';
 import { corsHeaders } from '@/lib/cors';
+import { ENV } from '@/lib/env';
 
 const MAX_CODE_SIZE = 50 * 1024; // 50KB
 const VALID_LANGUAGES = new Set([
@@ -65,9 +66,8 @@ export async function POST(req: Request) {
       : 'generic-js';
     const prompt = buildPrompt(projectType, code);
 
-    const client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    const apiKey = ENV.ANTHROPIC_API_KEY;
+    const client = new Anthropic({ apiKey });
 
     const stream = await client.messages.stream({
       model: 'claude-sonnet-4-20250514',
@@ -88,7 +88,8 @@ export async function POST(req: Request) {
             }
           }
           controller.close();
-        } catch {
+        } catch (err) {
+          console.error('[review] Stream error:', err instanceof Error ? err.message : 'unknown');
           controller.error(new Error('Stream interrupted'));
         }
       },
@@ -101,7 +102,8 @@ export async function POST(req: Request) {
         'Transfer-Encoding': 'chunked',
       },
     });
-  } catch {
+  } catch (err) {
+    console.error('[review] Request error:', err instanceof Error ? err.message : 'unknown');
     return new Response(
       JSON.stringify({ error: 'Analysis failed. Please try again.' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
