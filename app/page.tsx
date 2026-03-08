@@ -26,8 +26,12 @@ const PROJECT_TYPE_MAP: Record<string, string> = {
   django: 'django', fastapi: 'fastapi',
   rails: 'rails', 'ruby on rails': 'rails',
   go: 'go', golang: 'go',
+  node: 'express', 'node.js': 'express', nodejs: 'express',
   'generic-js': 'generic-js', javascript: 'generic-js', typescript: 'generic-js',
   'generic-python': 'generic-python', python: 'generic-python',
+  database: 'generic-js', mysql: 'generic-js', postgres: 'generic-js',
+  react: 'generic-js', vue: 'generic-js', angular: 'generic-js', svelte: 'generic-js',
+  flask: 'generic-python', 'ruby': 'rails',
 };
 
 function normalizeProjectType(raw: string): string {
