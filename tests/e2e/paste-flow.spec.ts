@@ -21,23 +21,18 @@ const mockReviewResponse = JSON.stringify({
 test.describe('Paste code flow', () => {
   test('shows paste tab by default with disabled button', async ({ page }) => {
     await page.goto('/');
-    const pasteTab = page.locator('button.tab', { hasText: 'PASTE CODE' });
-    await expect(pasteTab).toHaveClass(/active/);
-
-    const analyzeBtn = page.locator('button.btn-primary');
-    await expect(analyzeBtn).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'PASTE CODE' })).toHaveClass(/active/);
+    await expect(page.getByRole('button', { name: 'analyze code' })).toBeDisabled();
   });
 
   test('enables button when code is entered and shows detection hint', async ({ page }) => {
     await page.goto('/');
-    const textarea = page.locator('textarea');
-    await textarea.fill("import express from 'express';\nconst app = express();");
+    const textarea = page.getByPlaceholder('Paste your code here...');
+    await textarea.click();
+    await textarea.pressSequentially("import express from 'express';", { delay: 10 });
 
-    const analyzeBtn = page.locator('button.btn-primary');
-    await expect(analyzeBtn).toBeEnabled();
-
-    const hint = page.locator('.hint');
-    await expect(hint).toContainText('Detected:');
+    await expect(page.getByRole('button', { name: 'analyze code' })).toBeEnabled();
+    await expect(page.locator('.hint')).toContainText('Detected:');
   });
 
   test('full paste scan flow with mocked API', async ({ page }) => {
@@ -53,12 +48,12 @@ test.describe('Paste code flow', () => {
     await page.goto('/');
 
     // Enter code
-    const textarea = page.locator('textarea');
-    await textarea.fill('const x = eval(userInput);');
+    const textarea = page.getByPlaceholder('Paste your code here...');
+    await textarea.click();
+    await textarea.pressSequentially('const x = eval(userInput);', { delay: 10 });
 
     // Click analyze
-    const analyzeBtn = page.locator('button.btn-primary');
-    await analyzeBtn.click();
+    await page.getByRole('button', { name: 'analyze code' }).click();
 
     // Wait for results to appear
     await expect(page.locator('.report')).toBeVisible({ timeout: 10000 });
@@ -74,11 +69,10 @@ test.describe('Paste code flow', () => {
     await expect(page.locator('.issue-title')).toContainText('Missing input validation');
 
     // Click "analyze another" to reset
-    const resetBtn = page.locator('button', { hasText: 'analyze another' });
-    await resetBtn.click();
+    await page.getByRole('button', { name: 'analyze another' }).click();
 
     // Should be back to input form
-    await expect(page.locator('textarea')).toBeVisible();
+    await expect(page.getByPlaceholder('Paste your code here...')).toBeVisible();
   });
 
   test('shows error on API failure', async ({ page }) => {
@@ -91,14 +85,16 @@ test.describe('Paste code flow', () => {
     });
 
     await page.goto('/');
-    await page.locator('textarea').fill('const x = 1;');
-    await page.locator('button.btn-primary').click();
+    const textarea = page.getByPlaceholder('Paste your code here...');
+    await textarea.click();
+    await textarea.pressSequentially('const x = 1;', { delay: 10 });
+    await page.getByRole('button', { name: 'analyze code' }).click();
 
     await expect(page.locator('.error-card')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('.error-card')).toContainText('Too many requests');
 
     // Click try again
-    await page.locator('button', { hasText: 'try again' }).click();
-    await expect(page.locator('textarea')).toBeVisible();
+    await page.getByRole('button', { name: 'try again' }).click();
+    await expect(page.getByPlaceholder('Paste your code here...')).toBeVisible();
   });
 });

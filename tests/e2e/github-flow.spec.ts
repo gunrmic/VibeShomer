@@ -22,14 +22,11 @@ const mockGithubResponse = JSON.stringify({
 test.describe('GitHub URL flow', () => {
   test('switches to GitHub tab and shows URL input', async ({ page }) => {
     await page.goto('/');
-    const githubTab = page.locator('button.tab', { hasText: 'GITHUB URL' });
-    await githubTab.click();
+    await page.getByRole('button', { name: 'GITHUB URL' }).click();
 
-    await expect(page.locator('input[type="url"]')).toBeVisible();
-    await expect(page.locator('input[type="password"]')).toBeVisible();
-
-    const analyzeBtn = page.locator('button.btn-primary');
-    await expect(analyzeBtn).toBeDisabled();
+    await expect(page.getByPlaceholder('https://github.com/owner/repo')).toBeVisible();
+    await expect(page.getByPlaceholder(/Personal Access Token/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'analyze repo' })).toBeDisabled();
   });
 
   test('full GitHub scan flow with mocked API', async ({ page }) => {
@@ -42,13 +39,15 @@ test.describe('GitHub URL flow', () => {
     });
 
     await page.goto('/');
-    await page.locator('button.tab', { hasText: 'GITHUB URL' }).click();
+    await page.getByRole('button', { name: 'GITHUB URL' }).click();
 
     // Enter URL
-    await page.locator('input[type="url"]').fill('https://github.com/owner/repo');
+    const urlInput = page.getByPlaceholder('https://github.com/owner/repo');
+    await urlInput.click();
+    await urlInput.pressSequentially('https://github.com/owner/repo', { delay: 10 });
 
     // Click analyze
-    await page.locator('button.btn-primary').click();
+    await page.getByRole('button', { name: 'analyze repo' }).click();
 
     // Wait for results
     await expect(page.locator('.report')).toBeVisible({ timeout: 10000 });
@@ -71,9 +70,12 @@ test.describe('GitHub URL flow', () => {
     });
 
     await page.goto('/');
-    await page.locator('button.tab', { hasText: 'GITHUB URL' }).click();
-    await page.locator('input[type="url"]').fill('not-a-github-url');
-    await page.locator('button.btn-primary').click();
+    await page.getByRole('button', { name: 'GITHUB URL' }).click();
+
+    const urlInput = page.getByPlaceholder('https://github.com/owner/repo');
+    await urlInput.click();
+    await urlInput.pressSequentially('not-a-github-url', { delay: 10 });
+    await page.getByRole('button', { name: 'analyze repo' }).click();
 
     await expect(page.locator('.error-card')).toBeVisible({ timeout: 10000 });
   });

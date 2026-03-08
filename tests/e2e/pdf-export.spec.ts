@@ -41,8 +41,10 @@ test.describe('PDF export', () => {
 
     // Navigate and submit code
     await page.goto('/');
-    await page.locator('textarea').fill('const x = 1;');
-    await page.locator('button.btn-primary').click();
+    const textarea = page.getByPlaceholder('Paste your code here...');
+    await textarea.click();
+    await textarea.pressSequentially('const x = 1;', { delay: 10 });
+    await page.getByRole('button', { name: 'analyze code' }).click();
 
     // Wait for results
     await expect(page.locator('.report')).toBeVisible({ timeout: 10000 });
