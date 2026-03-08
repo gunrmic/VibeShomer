@@ -73,8 +73,18 @@ export async function fetchFileContent(
   );
 
   if (!res.ok) return '';
-  return res.text();
+
+  // Skip files larger than 100KB to prevent memory issues
+  const contentLength = res.headers.get('content-length');
+  if (contentLength && parseInt(contentLength) > 100 * 1024) return '';
+
+  // Read with size limit as fallback when Content-Length is absent
+  const text = await res.text();
+  if (text.length > 100 * 1024) return '';
+  return text;
 }
+
+const BATCH_SIZE = 5;
 
 export async function fetchMultipleFiles(
   owner: string,
@@ -82,15 +92,24 @@ export async function fetchMultipleFiles(
   paths: string[],
   token?: string
 ): Promise<FileContent[]> {
-  const results = await Promise.allSettled(
-    paths.map(async (p) => ({
-      path: p,
-      content: await fetchFileContent(owner, repo, p, token),
-    }))
-  );
+  const allFiles: FileContent[] = [];
 
-  return results
-    .filter((r): r is PromiseFulfilledResult<FileContent> => r.status === 'fulfilled')
-    .map((r) => r.value)
-    .filter((f) => f.content.length > 0);
+  // Process in batches to limit concurrent memory usage
+  for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+    const batch = paths.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (p) => ({
+        path: p,
+        content: await fetchFileContent(owner, repo, p, token),
+      }))
+    );
+
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value.content.length > 0) {
+        allFiles.push(r.value);
+      }
+    }
+  }
+
+  return allFiles;
 }

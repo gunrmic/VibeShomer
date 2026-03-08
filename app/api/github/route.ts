@@ -30,23 +30,15 @@ async function verifyGithubToken(token: string): Promise<boolean> {
         'User-Agent': 'VibeShomer',
       },
     });
+    // Cancel body stream to prevent connection leaks without loading into memory
+    await res.body?.cancel();
     return res.ok;
   } catch {
+    // Never log the token or error details that might contain it
     return false;
   }
 }
 
-const SAFE_ERRORS: Record<string, string> = {
-  'Repository not found. Is it public?': 'Repository not found. Is it public?',
-  'GitHub API rate limited. Try adding a personal access token.': 'GitHub API rate limited. Try adding a personal access token.',
-};
-
-function safeErrorMessage(err: unknown): string {
-  if (err instanceof Error && SAFE_ERRORS[err.message]) {
-    return SAFE_ERRORS[err.message];
-  }
-  return 'Analysis failed. Please try again.';
-}
 
 function getClientIp(): string {
   const h = headers();
@@ -190,8 +182,9 @@ export async function POST(req: Request) {
             }
           }
           controller.close();
-        } catch (err) {
-          console.error('[github] Stream error:', err instanceof Error ? err.message : 'unknown');
+        } catch {
+          console.error('[github] Stream error occurred');
+          stream.abort();
           controller.error(new Error('Stream interrupted'));
         }
       },
@@ -204,10 +197,10 @@ export async function POST(req: Request) {
         'Transfer-Encoding': 'chunked',
       },
     });
-  } catch (err) {
-    console.error('[github] Request error:', err instanceof Error ? err.message : 'unknown');
+  } catch {
+    console.error('[github] Request error occurred');
     return new Response(
-      JSON.stringify({ error: safeErrorMessage(err) }),
+      JSON.stringify({ error: 'Analysis failed. Please try again.' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }

@@ -88,8 +88,9 @@ export async function POST(req: Request) {
             }
           }
           controller.close();
-        } catch (err) {
-          console.error('[review] Stream error:', err instanceof Error ? err.message : 'unknown');
+        } catch {
+          console.error('[review] Stream error occurred');
+          stream.abort();
           controller.error(new Error('Stream interrupted'));
         }
       },
@@ -102,8 +103,8 @@ export async function POST(req: Request) {
         'Transfer-Encoding': 'chunked',
       },
     });
-  } catch (err) {
-    console.error('[review] Request error:', err instanceof Error ? err.message : 'unknown');
+  } catch {
+    console.error('[review] Request error occurred');
     return new Response(
       JSON.stringify({ error: 'Analysis failed. Please try again.' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }

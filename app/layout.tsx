@@ -1,18 +1,11 @@
 import type { Metadata } from 'next';
-import { Space_Mono, Heebo, Syne } from 'next/font/google';
+import { Space_Mono, Syne } from 'next/font/google';
 import './globals.css';
 
 const spaceMono = Space_Mono({
   weight: ['400', '700'],
   subsets: ['latin'],
   variable: '--font-space-mono',
-  display: 'swap',
-});
-
-const heebo = Heebo({
-  weight: ['400'],
-  subsets: ['hebrew'],
-  variable: '--font-heebo',
   display: 'swap',
 });
 
@@ -36,7 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${spaceMono.variable} ${heebo.variable} ${syne.variable}`}>
+      <body className={`${spaceMono.variable} ${syne.variable}`}>
         {children}
       </body>
     </html>
