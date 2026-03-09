@@ -14,7 +14,6 @@ import {
   fetchFileContent,
 } from '@/lib/githubClient';
 
-const MAX_FILE_COUNT = 5000;
 
 // Haiku for triage, Sonnet for deep analysis
 const MODEL_TRIAGE = 'claude-haiku-4-5-20251001';
@@ -126,15 +125,6 @@ export async function POST(req: Request) {
 
     // Fetch file tree
     const allFiles = await fetchFileTree(owner, repo, token);
-
-    if (allFiles.length > MAX_FILE_COUNT) {
-      return new Response(
-        JSON.stringify({
-          error: `Repository is too large (${allFiles.length} files). Max ${MAX_FILE_COUNT} for free scan.`,
-        }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // Detect project type — fetch root detection files in parallel
     const rootDetectionFiles = ['package.json', 'requirements.txt', 'pyproject.toml', 'go.mod', 'Gemfile'];
