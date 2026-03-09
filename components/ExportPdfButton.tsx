@@ -21,7 +21,8 @@ export function ExportPdfButton({ result }: { result: ReviewResult }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `vibeshomer-report-${result.projectType}-${Date.now()}.pdf`;
+      const name = result.repoName || result.projectType;
+      a.download = `vibeshomer-report-${name}-${Date.now()}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {

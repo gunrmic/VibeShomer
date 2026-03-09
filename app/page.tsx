@@ -126,6 +126,9 @@ export default function Home() {
 
       const parsed = JSON.parse(extractJson(fullText)) as ReviewResult;
       parsed.projectType = normalizeProjectType(parsed.projectType) as ReviewResult['projectType'];
+      // Extract repo name from GitHub URL for PDF filename
+      const repoMatch = url.match(/github\.com\/([^/]+\/[^/]+)/);
+      if (repoMatch) parsed.repoName = repoMatch[1].replace('/', '-');
       setResult(parsed);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');

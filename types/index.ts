@@ -31,4 +31,5 @@ export interface ReviewResult {
   };
   issues: Issue[];
   summary: string;
+  repoName?: string;
 }
