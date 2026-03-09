@@ -14,7 +14,7 @@ import {
   fetchFileContent,
 } from '@/lib/githubClient';
 
-const MAX_FILE_COUNT = 200;
+const MAX_FILE_COUNT = 5000;
 
 // Haiku for triage, Sonnet for deep analysis
 const MODEL_TRIAGE = 'claude-haiku-4-5-20251001';
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
     if (allFiles.length > MAX_FILE_COUNT) {
       return new Response(
         JSON.stringify({
-          error: `Repository has too many files. Max ${MAX_FILE_COUNT} for free scan.`,
+          error: `Repository is too large (${allFiles.length} files). Max ${MAX_FILE_COUNT} for free scan.`,
         }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
